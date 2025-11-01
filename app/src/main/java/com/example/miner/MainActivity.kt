@@ -3,15 +3,17 @@ package com.example.miner
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -37,9 +39,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MinerTheme {
+                // Use a dark, modern background color
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color.Black
+                    color = Color(0xFF121212) // Dark Charcoal
                 ) {
                     MinesweeperScreen()
                 }
@@ -52,10 +55,12 @@ class MainActivity : ComponentActivity() {
 fun MinesweeperScreen() {
     var bombLocations by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var revealedButtons by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var gameStatus by remember { mutableStateOf("Playing") } // "Playing", "Lost"
+    var gameStatus by remember { mutableStateOf("Playing") } // "Playing", "Lost", "Won"
+    val gridSize = 9
+    val bombCount = 2
 
     fun resetGame() {
-        bombLocations = (0..8).shuffled().take(2).toSet()
+        bombLocations = (0 until gridSize).shuffled().take(bombCount).toSet()
         revealedButtons = emptySet()
         gameStatus = "Playing"
     }
@@ -71,82 +76,145 @@ fun MinesweeperScreen() {
     ) {
         Text(
             text = "Mine Sweeper",
-            fontSize = 32.sp,
+            fontSize = 36.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
-            modifier = Modifier.padding(bottom = 24.dp)
+            color = Color(0xFF39FF14), // Neon Green
+            modifier = Modifier.padding(bottom = 32.dp)
         )
 
         ThreeByThreeGrid(
+            gridSize = gridSize,
             bombLocations = bombLocations,
             revealedButtons = revealedButtons,
             gameStatus = gameStatus,
             onButtonClick = { index ->
-                if (gameStatus == "Playing") {
-                    revealedButtons = revealedButtons + index
+                if (gameStatus == "Playing" && index !in revealedButtons) {
+                    val newRevealed = revealedButtons + index
                     if (bombLocations.contains(index)) {
                         gameStatus = "Lost"
+                        revealedButtons = newRevealed // Show the bomb they clicked
+                    } else {
+                        revealedButtons = newRevealed
+                        // Check for win condition
+                        val nonBombCells = (0 until gridSize).toSet() - bombLocations
+                        if (newRevealed.containsAll(nonBombCells)) {
+                            gameStatus = "Won"
+                        }
                     }
                 }
             }
         )
 
+        // Show game over messages and reset button
         if (gameStatus == "Lost") {
-            Text(
-                text = "You Lost!",
-                color = Color.Red,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 24.dp)
-            )
-            Button(
-                onClick = { resetGame() },
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Text(text = "Play Again")
-            }
+            GameStatusText(text = "You Lost!", color = Color(0xFFFF4444))
+            PlayAgainButton(onReset = { resetGame() })
+        }
+        if (gameStatus == "Won") {
+            GameStatusText(text = "You Won!", color = Color(0xFF39FF14))
+            PlayAgainButton(onReset = { resetGame() })
         }
     }
 }
 
 @Composable
 fun ThreeByThreeGrid(
+    gridSize: Int,
     bombLocations: Set<Int>,
     revealedButtons: Set<Int>,
     gameStatus: String,
     onButtonClick: (Int) -> Unit
 ) {
-    Box(modifier = Modifier.padding(horizontal = 30.dp)) {
+    // A distinct surface for the game board
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 20.dp)
+            .fillMaxWidth(),
+        color = Color(0xFF1E1E1E), // Slightly lighter than background
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFF333333))
+    ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(16.dp) // Padding inside the game board
         ) {
-            items(9) { index ->
+            items(gridSize) { index ->
+                val isGameOver = gameStatus != "Playing"
                 val isRevealed = revealedButtons.contains(index)
                 val isBomb = bombLocations.contains(index)
-                val isGameOver = gameStatus != "Playing"
+
+                // Define colors
+                val hiddenColor = Color(0xFF4A4A4A)
+                val revealedSafeColor = Color(0xFF0096FF) // A bright, eye-catching blue
+                val bombColor = Color(0xFFFF4444)
+
+                // Determine the correct color and text based on game state
+                val (color, text) = when {
+                    // Case 1: Button is revealed
+                    isRevealed -> {
+                        if (isBomb) (bombColor to "💣") // This reveal lost the game
+                        else (revealedSafeColor to "💎") // This is a safe reveal (with diamond)
+                    }
+                    // Case 2: Button not revealed, but game is over
+                    isGameOver -> {
+                        if (isBomb) (bombColor.copy(alpha = 0.7f) to "💣") // Show un-revealed bombs
+                        else (hiddenColor.copy(alpha = 0.5f) to "") // Show un-revealed safe
+                    }
+                    // Case 3: Button not revealed, game is playing
+                    else -> {
+                        (hiddenColor to "")
+                    }
+                }
 
                 Button(
                     onClick = { onButtonClick(index) },
                     modifier = Modifier.aspectRatio(1f),
                     enabled = !isRevealed && !isGameOver,
+                    shape = RoundedCornerShape(12.dp), // Nicer rounded corners
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 1.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isRevealed && isBomb) Color.Red else MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = when {
-                            isRevealed && isBomb -> Color.Red
-                            isRevealed && !isBomb -> Color.DarkGray
-                            isGameOver && isBomb -> Color.Red.copy(alpha = 0.5f) // Show bombs on game over
-                            else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                        }
+                        containerColor = hiddenColor, // Always show this when enabled
+                        disabledContainerColor = color // Show the calculated color when disabled
                     )
                 ) {
-                    if (isRevealed || (isGameOver && isBomb)) {
-                        Text(text = if (isBomb) "💣" else "✔", fontSize = 24.sp)
+                    if (text.isNotEmpty()) {
+                        Text(text = text, fontSize = 24.sp)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun GameStatusText(text: String, color: Color) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 28.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 24.dp)
+    )
+}
+
+@Composable
+fun PlayAgainButton(onReset: () -> Unit) {
+    Button(
+        onClick = onReset,
+        modifier = Modifier.padding(top = 16.dp),
+        shape = RoundedCornerShape(50), // Pill shape
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF39FF14) // Neon green
+        )
+    ) {
+        Text(
+            text = "Play Again",
+            color = Color.Black,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
     }
 }
 
@@ -155,7 +223,10 @@ fun ThreeByThreeGrid(
 @Composable
 fun DefaultPreview() {
     MinerTheme {
-        Surface(color = Color.Black) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color(0xFF121212)
+        ) {
             MinesweeperScreen()
         }
     }
